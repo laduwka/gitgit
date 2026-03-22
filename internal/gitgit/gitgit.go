@@ -138,27 +138,27 @@ func IsGitRepo(dir string) bool {
 }
 
 func CloneRepo(proj Project, url, parentDir string) {
-	fmt.Printf("[clone] %s\n", proj.PathWithNS)
+	fmt.Printf("[clone] %s -> %s\n", proj.PathWithNS, parentDir)
 
-	cmd := exec.Command("git", "clone", "--", url) // #nosec G204 -- url comes from GitLab API response, -- guards against option injection
+	cmd := exec.Command("git", "clone", "--quiet", "--", url) // #nosec G204 -- url comes from GitLab API response, -- guards against option injection
 	cmd.Dir = parentDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
 
-	if err := cmd.Run(); err != nil {
-		log.Printf("[%s] clone failed: %v", proj.PathWithNS, err)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		log.Printf("[%s] clone failed: %v\n%s", proj.PathWithNS, err, out)
+	} else {
+		fmt.Printf("[clone] done %s\n", proj.PathWithNS)
 	}
 }
 
 func UpdateRepo(proj Project, repoDir string) {
-	fmt.Printf("[update] %s\n", proj.PathWithNS)
+	fmt.Printf("[update] %s -> %s\n", proj.PathWithNS, repoDir)
 
-	cmd := exec.Command("git", "pull", "--all")
+	cmd := exec.Command("git", "pull", "--all", "--quiet")
 	cmd.Dir = repoDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
 
-	if err := cmd.Run(); err != nil {
-		log.Printf("[%s] pull failed: %v", proj.PathWithNS, err)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		log.Printf("[%s] pull failed: %v\n%s", proj.PathWithNS, err, out)
+	} else {
+		fmt.Printf("[update] done %s\n", proj.PathWithNS)
 	}
 }
