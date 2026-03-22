@@ -72,6 +72,7 @@ func FetchProjects(cfg Config) ([]Project, error) {
 		}
 
 		all = append(all, projects...)
+		log.Printf("[fetch] page %d: got %d projects (%d total)", page, len(projects), len(all))
 	}
 
 	return all, nil
