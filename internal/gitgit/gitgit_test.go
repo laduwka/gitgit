@@ -1,6 +1,7 @@
 package gitgit
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -37,7 +38,7 @@ func TestFetchProjects(t *testing.T) {
 		Token:   "test-token",
 	}
 
-	projects, err := FetchProjects(cfg)
+	projects, err := FetchProjects(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -63,7 +64,7 @@ func TestFetchProjectsUnauthorized(t *testing.T) {
 		Token:   "bad-token",
 	}
 
-	_, err := FetchProjects(cfg)
+	_, err := FetchProjects(context.Background(), cfg)
 	if err == nil {
 		t.Fatal("expected error for unauthorized request")
 	}
@@ -91,7 +92,7 @@ func TestFetchProjectsPagination(t *testing.T) {
 	defer srv.Close()
 
 	cfg := Config{GroupID: 1, URL: srv.URL, Token: "t"}
-	projects, err := FetchProjects(cfg)
+	projects, err := FetchProjects(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -187,7 +188,7 @@ func TestFetchProjectsEmptyGroup(t *testing.T) {
 	defer srv.Close()
 
 	cfg := Config{GroupID: 1, URL: srv.URL, Token: "t"}
-	projects, err := FetchProjects(cfg)
+	projects, err := FetchProjects(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -203,7 +204,7 @@ func TestFetchProjectsInvalidJSON(t *testing.T) {
 	defer srv.Close()
 
 	cfg := Config{GroupID: 1, URL: srv.URL, Token: "t"}
-	_, err := FetchProjects(cfg)
+	_, err := FetchProjects(context.Background(), cfg)
 	if err == nil {
 		t.Fatal("expected error for invalid JSON response")
 	}
@@ -214,7 +215,7 @@ func TestFetchProjectsNetworkError(t *testing.T) {
 	srv.Close()
 
 	cfg := Config{GroupID: 1, URL: srv.URL, Token: "t"}
-	_, err := FetchProjects(cfg)
+	_, err := FetchProjects(context.Background(), cfg)
 	if err == nil {
 		t.Fatal("expected error for unreachable server")
 	}
@@ -252,7 +253,7 @@ func TestFilterProjectsAllArchived(t *testing.T) {
 
 func TestProcessProjectsEmpty(t *testing.T) {
 	cfg := Config{Workers: 2, DataDir: t.TempDir()}
-	ProcessProjects(cfg, nil)
+	ProcessProjects(context.Background(), cfg, nil)
 }
 
 func TestProcessProjectsCreatesDirectories(t *testing.T) {
@@ -262,7 +263,7 @@ func TestProcessProjectsCreatesDirectories(t *testing.T) {
 	}
 
 	cfg := Config{Workers: 1, DataDir: dir}
-	ProcessProjects(cfg, projects)
+	ProcessProjects(context.Background(), cfg, projects)
 
 	nsDir := filepath.Join(dir, "group", "sub")
 	if info, err := os.Stat(nsDir); err != nil || !info.IsDir() {
@@ -281,5 +282,5 @@ func TestProcessProjectsBadDataDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := Config{Workers: 1, DataDir: badDir}
-	ProcessProjects(cfg, projects)
+	ProcessProjects(context.Background(), cfg, projects)
 }
