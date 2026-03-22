@@ -47,7 +47,7 @@ func main() {
 	}
 	cfg.DataDir, _ = filepath.Abs(cfg.DataDir)
 
-	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
+	if err := os.MkdirAll(cfg.DataDir, 0o750); err != nil {
 		log.Fatalf("error: cannot create data dir: %v", err)
 	}
 
