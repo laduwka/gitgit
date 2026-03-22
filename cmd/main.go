@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
 
 	"github.com/laduwka/gitgit/internal/gitgit"
@@ -21,6 +23,10 @@ func main() {
 	flag.IntVar(&cfg.Workers, "workers", 4, "Number of parallel workers")
 	flag.BoolVar(&cfg.UseHTTP, "http", false, "Clone via HTTPS instead of SSH")
 	flag.Parse()
+
+	if cfg.Workers < 1 {
+		log.Fatal("error: -workers must be >= 1")
+	}
 
 	if cfg.GroupID == 0 {
 		fmt.Fprintln(os.Stderr, "error: -id is required")
@@ -51,7 +57,10 @@ func main() {
 		log.Fatalf("error: cannot create data dir: %v", err)
 	}
 
-	projects, err := gitgit.FetchProjects(cfg)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	projects, err := gitgit.FetchProjects(ctx, cfg)
 	if err != nil {
 		log.Fatalf("error: fetching projects: %v", err)
 	}
@@ -61,7 +70,9 @@ func main() {
 		log.Fatalf("error: %v", err)
 	}
 
-	fmt.Printf("found %d projects (%d after filter)\n", len(projects), len(filtered))
+	log.Printf("found %d projects (%d after filter)", len(projects), len(filtered))
 
-	gitgit.ProcessProjects(cfg, filtered)
+	if errCount := gitgit.ProcessProjects(ctx, cfg, filtered); errCount > 0 {
+		log.Fatalf("completed with %d errors", errCount)
+	}
 }
