@@ -1,6 +1,7 @@
 package gitgit
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sync"
+	"time"
 )
 
 type Project struct {
@@ -32,20 +34,22 @@ type Config struct {
 	UseHTTP bool
 }
 
-func FetchProjects(cfg Config) ([]Project, error) {
+var httpClient = &http.Client{Timeout: 30 * time.Second}
+
+func FetchProjects(ctx context.Context, cfg Config) ([]Project, error) {
 	var all []Project
 
 	for page := 1; ; page++ {
 		url := fmt.Sprintf("%s/groups/%d/projects?per_page=100&page=%d&include_subgroups=true",
 			cfg.URL, cfg.GroupID, page)
 
-		req, err := http.NewRequest("GET", url, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 		if err != nil {
 			return nil, err
 		}
 		req.Header.Set("PRIVATE-TOKEN", cfg.Token)
 
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := httpClient.Do(req)
 		if err != nil {
 			return nil, fmt.Errorf("page %d: %w", page, err)
 		}
@@ -96,17 +100,24 @@ func FilterProjects(projects []Project, regex string) ([]Project, error) {
 	return filtered, nil
 }
 
-func ProcessProjects(cfg Config, projects []Project) {
+func ProcessProjects(ctx context.Context, cfg Config, projects []Project) int {
+	workers := cfg.Workers
+	if workers < 1 {
+		workers = 1
+	}
+
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, cfg.Workers)
+	sem := make(chan struct{}, workers)
+	var mu sync.Mutex
+	var errCount int
 
 	for _, p := range projects {
 		wg.Add(1)
-		sem <- struct{}{}
 
 		go func(proj Project) {
-			defer wg.Done()
+			sem <- struct{}{}
 			defer func() { <-sem }()
+			defer wg.Done()
 
 			cloneURL := proj.SSHURLToRepo
 			if cfg.UseHTTP {
@@ -118,18 +129,28 @@ func ProcessProjects(cfg Config, projects []Project) {
 
 			if err := os.MkdirAll(nsDir, 0o750); err != nil {
 				log.Printf("[%s] error creating dir: %v", proj.PathWithNS, err)
+				mu.Lock()
+				errCount++
+				mu.Unlock()
 				return
 			}
 
+			var err error
 			if IsGitRepo(repoDir) {
-				UpdateRepo(proj, repoDir)
+				err = UpdateRepo(ctx, proj, repoDir)
 			} else {
-				CloneRepo(proj, cloneURL, nsDir)
+				err = CloneRepo(ctx, proj, cloneURL, nsDir)
+			}
+			if err != nil {
+				mu.Lock()
+				errCount++
+				mu.Unlock()
 			}
 		}(p)
 	}
 
 	wg.Wait()
+	return errCount
 }
 
 func IsGitRepo(dir string) bool {
@@ -137,28 +158,30 @@ func IsGitRepo(dir string) bool {
 	return err == nil && info.IsDir()
 }
 
-func CloneRepo(proj Project, url, parentDir string) {
-	fmt.Printf("[clone] %s -> %s\n", proj.PathWithNS, parentDir)
+func CloneRepo(ctx context.Context, proj Project, url, parentDir string) error {
+	log.Printf("[clone] %s -> %s", proj.PathWithNS, parentDir)
 
-	cmd := exec.Command("git", "clone", "--quiet", "--", url) // #nosec G204 -- url comes from GitLab API response, -- guards against option injection
+	cmd := exec.CommandContext(ctx, "git", "clone", "--quiet", "--", url) // #nosec G204 -- url comes from GitLab API response, -- guards against option injection
 	cmd.Dir = parentDir
 
 	if out, err := cmd.CombinedOutput(); err != nil {
 		log.Printf("[%s] clone failed: %v\n%s", proj.PathWithNS, err, out)
-	} else {
-		fmt.Printf("[clone] done %s\n", proj.PathWithNS)
+		return err
 	}
+	log.Printf("[clone] done %s", proj.PathWithNS)
+	return nil
 }
 
-func UpdateRepo(proj Project, repoDir string) {
-	fmt.Printf("[update] %s -> %s\n", proj.PathWithNS, repoDir)
+func UpdateRepo(ctx context.Context, proj Project, repoDir string) error {
+	log.Printf("[update] %s -> %s", proj.PathWithNS, repoDir)
 
-	cmd := exec.Command("git", "pull", "--all", "--quiet")
+	cmd := exec.CommandContext(ctx, "git", "pull", "--all", "--quiet")
 	cmd.Dir = repoDir
 
 	if out, err := cmd.CombinedOutput(); err != nil {
 		log.Printf("[%s] pull failed: %v\n%s", proj.PathWithNS, err, out)
-	} else {
-		fmt.Printf("[update] done %s\n", proj.PathWithNS)
+		return err
 	}
+	log.Printf("[update] done %s", proj.PathWithNS)
+	return nil
 }
