@@ -1,0 +1,6 @@
+src/testing/
+*.swp
+*.swo
+*.sql
+Dockerfile
+.git
