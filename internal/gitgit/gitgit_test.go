@@ -173,3 +173,106 @@ func TestIsGitRepoFileNotDir(t *testing.T) {
 		t.Error(".git as file should not count as git repo dir")
 	}
 }
+
+func TestIsGitRepoNonexistentDir(t *testing.T) {
+	if IsGitRepo("/nonexistent/path/that/does/not/exist") {
+		t.Error("nonexistent dir should not be a git repo")
+	}
+}
+
+func TestFetchProjectsEmptyGroup(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode([]Project{})
+	}))
+	defer srv.Close()
+
+	cfg := Config{GroupID: 1, URL: srv.URL, Token: "t"}
+	projects, err := FetchProjects(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(projects) != 0 {
+		t.Fatalf("expected 0 projects, got %d", len(projects))
+	}
+}
+
+func TestFetchProjectsInvalidJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("<html>502 Bad Gateway</html>"))
+	}))
+	defer srv.Close()
+
+	cfg := Config{GroupID: 1, URL: srv.URL, Token: "t"}
+	_, err := FetchProjects(cfg)
+	if err == nil {
+		t.Fatal("expected error for invalid JSON response")
+	}
+}
+
+func TestFetchProjectsNetworkError(t *testing.T) {
+	cfg := Config{GroupID: 1, URL: "http://127.0.0.1:1", Token: "t"}
+	_, err := FetchProjects(cfg)
+	if err == nil {
+		t.Fatal("expected error for unreachable server")
+	}
+}
+
+func TestFilterProjectsEmptyRegex(t *testing.T) {
+	projects := []Project{
+		{ID: 1, PathWithNS: "a/b"},
+		{ID: 2, PathWithNS: "c/d"},
+	}
+
+	filtered, err := FilterProjects(projects, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(filtered) != 2 {
+		t.Fatalf("expected 2 projects, got %d", len(filtered))
+	}
+}
+
+func TestFilterProjectsAllArchived(t *testing.T) {
+	projects := []Project{
+		{ID: 1, PathWithNS: "a/b", Archived: true},
+		{ID: 2, PathWithNS: "c/d", Archived: true},
+	}
+
+	filtered, err := FilterProjects(projects, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(filtered) != 0 {
+		t.Fatalf("expected 0 projects, got %d", len(filtered))
+	}
+}
+
+func TestProcessProjectsEmpty(t *testing.T) {
+	cfg := Config{Workers: 2, DataDir: t.TempDir()}
+	ProcessProjects(cfg, nil)
+}
+
+func TestProcessProjectsCreatesDirectories(t *testing.T) {
+	dir := t.TempDir()
+	projects := []Project{
+		{ID: 1, PathWithNS: "group/sub/repo", SSHURLToRepo: "git@fake:g/s/r.git"},
+	}
+
+	cfg := Config{Workers: 1, DataDir: dir}
+	ProcessProjects(cfg, projects)
+
+	nsDir := filepath.Join(dir, "group", "sub")
+	if info, err := os.Stat(nsDir); err != nil || !info.IsDir() {
+		t.Errorf("expected namespace directory %s to be created", nsDir)
+	}
+}
+
+func TestProcessProjectsBadDataDir(t *testing.T) {
+	projects := []Project{
+		{ID: 1, PathWithNS: "group/repo", SSHURLToRepo: "git@fake:g/r.git"},
+		{ID: 2, PathWithNS: "group/repo2", SSHURLToRepo: "git@fake:g/r2.git"},
+	}
+
+	cfg := Config{Workers: 1, DataDir: "/dev/null/invalid"}
+	ProcessProjects(cfg, projects)
+}
