@@ -51,7 +51,9 @@ func FetchProjects(cfg Config) ([]Project, error) {
 		}
 
 		body, err := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
+		if cerr := resp.Body.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
 		if err != nil {
 			return nil, fmt.Errorf("page %d: reading body: %w", page, err)
 		}
@@ -113,7 +115,7 @@ func ProcessProjects(cfg Config, projects []Project) {
 			nsDir := filepath.Join(cfg.DataDir, filepath.Dir(proj.PathWithNS))
 			repoDir := filepath.Join(cfg.DataDir, proj.PathWithNS)
 
-			if err := os.MkdirAll(nsDir, 0o755); err != nil {
+			if err := os.MkdirAll(nsDir, 0o750); err != nil {
 				log.Printf("[%s] error creating dir: %v", proj.PathWithNS, err)
 				return
 			}
@@ -137,7 +139,7 @@ func IsGitRepo(dir string) bool {
 func CloneRepo(proj Project, url, parentDir string) {
 	fmt.Printf("[clone] %s\n", proj.PathWithNS)
 
-	cmd := exec.Command("git", "clone", url)
+	cmd := exec.Command("git", "clone", url) // #nosec G204 -- url comes from GitLab API response
 	cmd.Dir = parentDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
