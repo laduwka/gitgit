@@ -51,7 +51,7 @@ func FetchProjects(cfg Config) ([]Project, error) {
 		}
 
 		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if err != nil {
 			return nil, fmt.Errorf("page %d: reading body: %w", page, err)
 		}

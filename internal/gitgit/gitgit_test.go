@@ -24,9 +24,9 @@ func TestFetchProjects(t *testing.T) {
 		page := r.URL.Query().Get("page")
 		switch page {
 		case "1", "":
-			json.NewEncoder(w).Encode(page1)
+			_ = json.NewEncoder(w).Encode(page1)
 		default:
-			json.NewEncoder(w).Encode([]Project{})
+			_ = json.NewEncoder(w).Encode([]Project{})
 		}
 	}))
 	defer srv.Close()
@@ -81,11 +81,11 @@ func TestFetchProjectsPagination(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Query().Get("page") {
 		case "1", "":
-			json.NewEncoder(w).Encode(page1)
+			_ = json.NewEncoder(w).Encode(page1)
 		case "2":
-			json.NewEncoder(w).Encode(page2)
+			_ = json.NewEncoder(w).Encode(page2)
 		default:
-			json.NewEncoder(w).Encode([]Project{})
+			_ = json.NewEncoder(w).Encode([]Project{})
 		}
 	}))
 	defer srv.Close()
@@ -182,7 +182,7 @@ func TestIsGitRepoNonexistentDir(t *testing.T) {
 
 func TestFetchProjectsEmptyGroup(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode([]Project{})
+		_ = json.NewEncoder(w).Encode([]Project{})
 	}))
 	defer srv.Close()
 
@@ -198,7 +198,7 @@ func TestFetchProjectsEmptyGroup(t *testing.T) {
 
 func TestFetchProjectsInvalidJSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("<html>502 Bad Gateway</html>"))
+		_, _ = w.Write([]byte("<html>502 Bad Gateway</html>"))
 	}))
 	defer srv.Close()
 
