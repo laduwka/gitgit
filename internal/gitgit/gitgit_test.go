@@ -175,7 +175,7 @@ func TestIsGitRepoFileNotDir(t *testing.T) {
 }
 
 func TestIsGitRepoNonexistentDir(t *testing.T) {
-	if IsGitRepo("/nonexistent/path/that/does/not/exist") {
+	if IsGitRepo(filepath.Join(t.TempDir(), "does-not-exist")) {
 		t.Error("nonexistent dir should not be a git repo")
 	}
 }
@@ -210,7 +210,10 @@ func TestFetchProjectsInvalidJSON(t *testing.T) {
 }
 
 func TestFetchProjectsNetworkError(t *testing.T) {
-	cfg := Config{GroupID: 1, URL: "http://127.0.0.1:1", Token: "t"}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	srv.Close()
+
+	cfg := Config{GroupID: 1, URL: srv.URL, Token: "t"}
 	_, err := FetchProjects(cfg)
 	if err == nil {
 		t.Fatal("expected error for unreachable server")
@@ -273,6 +276,10 @@ func TestProcessProjectsBadDataDir(t *testing.T) {
 		{ID: 2, PathWithNS: "group/repo2", SSHURLToRepo: "git@fake:g/r2.git"},
 	}
 
-	cfg := Config{Workers: 1, DataDir: "/dev/null/invalid"}
+	badDir := filepath.Join(t.TempDir(), "file-not-dir")
+	if err := os.WriteFile(badDir, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Config{Workers: 1, DataDir: badDir}
 	ProcessProjects(cfg, projects)
 }

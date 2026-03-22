@@ -52,7 +52,7 @@ func FetchProjects(cfg Config) ([]Project, error) {
 
 		body, err := io.ReadAll(resp.Body)
 		if cerr := resp.Body.Close(); cerr != nil && err == nil {
-			err = cerr
+			return nil, fmt.Errorf("page %d: closing body: %w", page, cerr)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("page %d: reading body: %w", page, err)
@@ -139,7 +139,7 @@ func IsGitRepo(dir string) bool {
 func CloneRepo(proj Project, url, parentDir string) {
 	fmt.Printf("[clone] %s\n", proj.PathWithNS)
 
-	cmd := exec.Command("git", "clone", url) // #nosec G204 -- url comes from GitLab API response
+	cmd := exec.Command("git", "clone", "--", url) // #nosec G204 -- url comes from GitLab API response, -- guards against option injection
 	cmd.Dir = parentDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
