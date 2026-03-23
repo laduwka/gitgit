@@ -20,7 +20,7 @@ Features:
 ### Build from source
 
 ```bash
-go build -o gg ./cmd/main.go
+go build -o gitgit ./cmd/main.go
 ```
 
 ### Install from releases
@@ -30,7 +30,7 @@ Download a pre-built binary from the [Releases](https://github.com/laduwka/gitgi
 ### Docker
 
 ```bash
-docker build . -t gg
+docker build . -t gitgit
 ```
 
 ## Usage
@@ -50,44 +50,44 @@ Create the token in GitLab profile settings: **Settings → Access Tokens**.
 Clone all projects in a group:
 
 ```bash
-./gg -id 567
+./gitgit -id 567
 ```
 
 Update already cloned projects (re-run):
 
 ```bash
-./gg -id 567
+./gitgit -id 567
 ```
 
 Filter by project path:
 
 ```bash
-./gg -id 567 -regex 'backend/services'
+./gitgit -id 567 -regex 'backend/services'
 ```
 
 Increase the number of parallel workers:
 
 ```bash
-./gg -id 567 -workers 8
+./gitgit -id 567 -workers 8
 ```
 
 Use HTTPS instead of SSH:
 
 ```bash
-./gg -id 567 -http
+./gitgit -id 567 -http
 ```
 
 Specify a custom GitLab instance:
 
 ```bash
-./gg -id 567 -url https://git.example.com/api/v4
+./gitgit -id 567 -url https://git.example.com/api/v4
 ```
 
 The URL can also be set via an environment variable:
 
 ```bash
 export URL="https://git.example.com/api/v4"
-./gg -id 567
+./gitgit -id 567
 ```
 
 ### All flags
@@ -105,34 +105,34 @@ export URL="https://git.example.com/api/v4"
 ## Docker
 
 ```bash
-docker build . -t gg
+docker build . -t gitgit
 
 docker run -v "$PWD:/data:rw" \
   -v "$HOME/.ssh:/.ssh" \
   -v "$SSH_AUTH_SOCK:/.SSH_AUTH_SOCK" \
   -e TOKEN \
   -u "$UID:$UID" \
-  --rm gg -id 567
+  --rm gitgit -id 567
 ```
 
 Convenience alias:
 
 ```bash
-alias gg='docker run --rm -v "$PWD:/data:rw" \
+alias gitgit='docker run --rm -v "$PWD:/data:rw" \
   -v "$HOME/.ssh:/.ssh" \
   -v "$SSH_AUTH_SOCK:/.SSH_AUTH_SOCK" \
-  -e TOKEN -u "$UID:$UID" gg'
+  -e TOKEN -u "$UID:$UID" gitgit'
 ```
 
 macOS alias example:
 
 ```bash
-alias gg='docker run --rm -it \
+alias gitgit='docker run --rm -it \
   -v /run/host-services/ssh-auth.sock:/ssh-agent \
   -e SSH_AUTH_SOCK="/ssh-agent" \
   -v "$HOME/.ssh/known_hosts:/root/.ssh/known_hosts" \
   -v "$PWD:/data:rw" \
-  -e TOKEN gg'
+  -e TOKEN gitgit'
 ```
 
 ## How it works
@@ -146,7 +146,7 @@ alias gg='docker run --rm -it \
 
 ```bash
 go test ./...                              # run tests
-go build -o gg ./cmd/main.go               # build
+go build -o gitgit ./cmd/main.go               # build
 ```
 
 Releases are created automatically via [GoReleaser](https://goreleaser.com/) when a `v*` tag is pushed.

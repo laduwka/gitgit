@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 )
@@ -35,6 +36,10 @@ type Config struct {
 }
 
 var httpClient = &http.Client{Timeout: 30 * time.Second}
+
+func gitEnv() []string {
+	return append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+}
 
 func FetchProjects(ctx context.Context, cfg Config) ([]Project, error) {
 	var all []Project
@@ -100,7 +105,12 @@ func FilterProjects(projects []Project, regex string) ([]Project, error) {
 	return filtered, nil
 }
 
-func ProcessProjects(ctx context.Context, cfg Config, projects []Project) int {
+type FailedProject struct {
+	Path string
+	Err  string
+}
+
+func ProcessProjects(ctx context.Context, cfg Config, projects []Project) []FailedProject {
 	workers := cfg.Workers
 	if workers < 1 {
 		workers = 1
@@ -109,7 +119,7 @@ func ProcessProjects(ctx context.Context, cfg Config, projects []Project) int {
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, workers)
 	var mu sync.Mutex
-	var errCount int
+	var failures []FailedProject
 
 	for _, p := range projects {
 		wg.Add(1)
@@ -130,27 +140,27 @@ func ProcessProjects(ctx context.Context, cfg Config, projects []Project) int {
 			if err := os.MkdirAll(nsDir, 0o750); err != nil {
 				log.Printf("[%s] error creating dir: %v", proj.PathWithNS, err)
 				mu.Lock()
-				errCount++
+				failures = append(failures, FailedProject{Path: proj.PathWithNS, Err: fmt.Sprintf("creating dir: %v", err)})
 				mu.Unlock()
 				return
 			}
 
 			var err error
 			if IsGitRepo(repoDir) {
-				err = UpdateRepo(ctx, proj, repoDir)
+				err = UpdateRepo(ctx, proj, repoDir, cloneURL)
 			} else {
 				err = CloneRepo(ctx, proj, cloneURL, nsDir)
 			}
 			if err != nil {
 				mu.Lock()
-				errCount++
+				failures = append(failures, FailedProject{Path: proj.PathWithNS, Err: err.Error()})
 				mu.Unlock()
 			}
 		}(p)
 	}
 
 	wg.Wait()
-	return errCount
+	return failures
 }
 
 func IsGitRepo(dir string) bool {
@@ -163,6 +173,7 @@ func CloneRepo(ctx context.Context, proj Project, url, parentDir string) error {
 
 	cmd := exec.CommandContext(ctx, "git", "clone", "--quiet", "--", url) // #nosec G204 -- url comes from GitLab API response, -- guards against option injection
 	cmd.Dir = parentDir
+	cmd.Env = gitEnv()
 
 	if out, err := cmd.CombinedOutput(); err != nil {
 		log.Printf("[%s] clone failed: %v\n%s", proj.PathWithNS, err, out)
@@ -172,11 +183,30 @@ func CloneRepo(ctx context.Context, proj Project, url, parentDir string) error {
 	return nil
 }
 
-func UpdateRepo(ctx context.Context, proj Project, repoDir string) error {
+func UpdateRepo(ctx context.Context, proj Project, repoDir, expectedURL string) error {
 	log.Printf("[update] %s -> %s", proj.PathWithNS, repoDir)
+
+	// Sync remote URL if it changed (e.g. HTTPS→SSH switch).
+	getURL := exec.CommandContext(ctx, "git", "remote", "get-url", "origin")
+	getURL.Dir = repoDir
+	getURL.Env = gitEnv()
+	if urlOut, err := getURL.Output(); err == nil {
+		current := strings.TrimSpace(string(urlOut))
+		if current != expectedURL {
+			log.Printf("[update] %s: remote origin %s -> %s", proj.PathWithNS, current, expectedURL)
+			setURL := exec.CommandContext(ctx, "git", "remote", "set-url", "origin", expectedURL)
+			setURL.Dir = repoDir
+			setURL.Env = gitEnv()
+			if out, err := setURL.CombinedOutput(); err != nil {
+				log.Printf("[%s] set-url failed: %v\n%s", proj.PathWithNS, err, out)
+				return err
+			}
+		}
+	}
 
 	cmd := exec.CommandContext(ctx, "git", "pull", "--all", "--quiet")
 	cmd.Dir = repoDir
+	cmd.Env = gitEnv()
 
 	if out, err := cmd.CombinedOutput(); err != nil {
 		log.Printf("[%s] pull failed: %v\n%s", proj.PathWithNS, err, out)
