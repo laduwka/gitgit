@@ -20,7 +20,7 @@ gitgit рекурсивно клонирует и обновляет все пр
 ### Сборка из исходников
 
 ```bash
-go build -o gg ./cmd/main.go
+go build -o gitgit ./cmd/main.go
 ```
 
 ### Установка из релизов
@@ -30,7 +30,7 @@ go build -o gg ./cmd/main.go
 ### Docker
 
 ```bash
-docker build . -t gg
+docker build . -t gitgit
 ```
 
 ## Использование
@@ -50,44 +50,44 @@ export TOKEN="ваш_gitlab_токен"
 Клонировать все проекты группы:
 
 ```bash
-./gg -id 567
+./gitgit -id 567
 ```
 
 Обновить уже склонированные проекты (повторный запуск):
 
 ```bash
-./gg -id 567
+./gitgit -id 567
 ```
 
 Фильтрация по пути проекта:
 
 ```bash
-./gg -id 567 -regex 'backend/services'
+./gitgit -id 567 -regex 'backend/services'
 ```
 
 Увеличить число параллельных воркеров:
 
 ```bash
-./gg -id 567 -workers 8
+./gitgit -id 567 -workers 8
 ```
 
 Использовать HTTPS вместо SSH:
 
 ```bash
-./gg -id 567 -http
+./gitgit -id 567 -http
 ```
 
 Указать свой GitLab-инстанс:
 
 ```bash
-./gg -id 567 -url https://git.example.com/api/v4
+./gitgit -id 567 -url https://git.example.com/api/v4
 ```
 
 URL также можно задать через переменную окружения:
 
 ```bash
 export URL="https://git.example.com/api/v4"
-./gg -id 567
+./gitgit -id 567
 ```
 
 ### Все флаги
@@ -105,34 +105,34 @@ export URL="https://git.example.com/api/v4"
 ## Docker
 
 ```bash
-docker build . -t gg
+docker build . -t gitgit
 
 docker run -v "$PWD:/data:rw" \
   -v "$HOME/.ssh:/.ssh" \
   -v "$SSH_AUTH_SOCK:/.SSH_AUTH_SOCK" \
   -e TOKEN \
   -u "$UID:$UID" \
-  --rm gg -id 567
+  --rm gitgit -id 567
 ```
 
 Алиас для удобства:
 
 ```bash
-alias gg='docker run --rm -v "$PWD:/data:rw" \
+alias gitgit='docker run --rm -v "$PWD:/data:rw" \
   -v "$HOME/.ssh:/.ssh" \
   -v "$SSH_AUTH_SOCK:/.SSH_AUTH_SOCK" \
-  -e TOKEN -u "$UID:$UID" gg'
+  -e TOKEN -u "$UID:$UID" gitgit'
 ```
 
 Пример алиаса для macOS:
 
 ```bash
-alias gg='docker run --rm -it \
+alias gitgit='docker run --rm -it \
   -v /run/host-services/ssh-auth.sock:/ssh-agent \
   -e SSH_AUTH_SOCK="/ssh-agent" \
   -v "$HOME/.ssh/known_hosts:/root/.ssh/known_hosts" \
   -v "$PWD:/data:rw" \
-  -e TOKEN gg'
+  -e TOKEN gitgit'
 ```
 
 ## Принцип работы
@@ -146,7 +146,7 @@ alias gg='docker run --rm -it \
 
 ```bash
 go test ./...                              # запуск тестов
-go build -o gg ./cmd/main.go               # сборка
+go build -o gitgit ./cmd/main.go               # сборка
 ```
 
 Релизы создаются автоматически через [GoReleaser](https://goreleaser.com/) при пуше тега `v*`.
