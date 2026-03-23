@@ -100,7 +100,12 @@ func FilterProjects(projects []Project, regex string) ([]Project, error) {
 	return filtered, nil
 }
 
-func ProcessProjects(ctx context.Context, cfg Config, projects []Project) int {
+type FailedProject struct {
+	Path string
+	Err  string
+}
+
+func ProcessProjects(ctx context.Context, cfg Config, projects []Project) []FailedProject {
 	workers := cfg.Workers
 	if workers < 1 {
 		workers = 1
@@ -109,7 +114,7 @@ func ProcessProjects(ctx context.Context, cfg Config, projects []Project) int {
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, workers)
 	var mu sync.Mutex
-	var errCount int
+	var failures []FailedProject
 
 	for _, p := range projects {
 		wg.Add(1)
@@ -130,7 +135,7 @@ func ProcessProjects(ctx context.Context, cfg Config, projects []Project) int {
 			if err := os.MkdirAll(nsDir, 0o750); err != nil {
 				log.Printf("[%s] error creating dir: %v", proj.PathWithNS, err)
 				mu.Lock()
-				errCount++
+				failures = append(failures, FailedProject{Path: proj.PathWithNS, Err: fmt.Sprintf("creating dir: %v", err)})
 				mu.Unlock()
 				return
 			}
@@ -143,14 +148,14 @@ func ProcessProjects(ctx context.Context, cfg Config, projects []Project) int {
 			}
 			if err != nil {
 				mu.Lock()
-				errCount++
+				failures = append(failures, FailedProject{Path: proj.PathWithNS, Err: err.Error()})
 				mu.Unlock()
 			}
 		}(p)
 	}
 
 	wg.Wait()
-	return errCount
+	return failures
 }
 
 func IsGitRepo(dir string) bool {

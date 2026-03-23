@@ -72,7 +72,13 @@ func main() {
 
 	log.Printf("found %d projects (%d after filter)", len(projects), len(filtered))
 
-	if errCount := gitgit.ProcessProjects(ctx, cfg, filtered); errCount > 0 {
-		log.Fatalf("completed with %d errors", errCount)
+	failures := gitgit.ProcessProjects(ctx, cfg, filtered)
+	if len(failures) > 0 {
+		fmt.Fprintf(os.Stderr, "\n=== FAILED PROJECTS ===\n")
+		for _, f := range failures {
+			fmt.Fprintf(os.Stderr, "  %s: %s\n", f.Path, f.Err)
+		}
+		fmt.Fprintln(os.Stderr)
+		log.Fatalf("completed with %d errors", len(failures))
 	}
 }
