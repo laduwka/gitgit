@@ -208,7 +208,7 @@ func UpdateRepo(ctx context.Context, proj Project, repoDir, expectedURL string) 
 		current := strings.TrimSpace(string(urlOut))
 		if current != expectedURL {
 			log.Printf("[update] %s: remote origin %s -> %s", proj.PathWithNS, current, expectedURL)
-			setURL := exec.CommandContext(ctx, "git", "remote", "set-url", "origin", expectedURL)
+			setURL := exec.CommandContext(ctx, "git", "remote", "set-url", "--", "origin", expectedURL) // #nosec G204 -- expectedURL comes from GitLab API response, -- guards against option injection
 			setURL.Dir = repoDir
 			setURL.Env = gitEnv()
 			if out, err := setURL.CombinedOutput(); err != nil {
