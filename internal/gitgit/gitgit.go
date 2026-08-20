@@ -23,6 +23,7 @@ type Project struct {
 	HTTPURLToRepo string `json:"http_url_to_repo"`
 	PathWithNS    string `json:"path_with_namespace"`
 	Archived      bool   `json:"archived"`
+	EmptyRepo     bool   `json:"empty_repo"`
 }
 
 type Config struct {
@@ -87,22 +88,35 @@ func FetchProjects(ctx context.Context, cfg Config) ([]Project, error) {
 	return all, nil
 }
 
-func FilterProjects(projects []Project, regex string) ([]Project, error) {
+// FilterProjects отбирает проекты, подлежащие синхронизации, и дополнительно
+// возвращает число пропущенных пустых репозиториев.
+//
+// Пустой репозиторий (ни одного коммита на удалённой стороне) отсеивается по той
+// же причине, что и архивный: синхронизировать в нём нечего. Без этого git clone
+// заводит локальную ветку по умолчанию без коммитов, а последующий git pull
+// возвращает ненулевой код, и весь прогон выглядит упавшим.
+func FilterProjects(projects []Project, regex string) ([]Project, int, error) {
 	re, err := regexp.Compile(regex)
 	if err != nil {
-		return nil, fmt.Errorf("bad regex %q: %w", regex, err)
+		return nil, 0, fmt.Errorf("bad regex %q: %w", regex, err)
 	}
 
 	var filtered []Project
+	skippedEmpty := 0
 	for _, p := range projects {
 		if p.Archived {
 			continue
 		}
-		if re.MatchString(p.PathWithNS) {
-			filtered = append(filtered, p)
+		if !re.MatchString(p.PathWithNS) {
+			continue
 		}
+		if p.EmptyRepo {
+			skippedEmpty++
+			continue
+		}
+		filtered = append(filtered, p)
 	}
-	return filtered, nil
+	return filtered, skippedEmpty, nil
 }
 
 type FailedProject struct {
@@ -194,7 +208,7 @@ func UpdateRepo(ctx context.Context, proj Project, repoDir, expectedURL string) 
 		current := strings.TrimSpace(string(urlOut))
 		if current != expectedURL {
 			log.Printf("[update] %s: remote origin %s -> %s", proj.PathWithNS, current, expectedURL)
-			setURL := exec.CommandContext(ctx, "git", "remote", "set-url", "origin", expectedURL)
+			setURL := exec.CommandContext(ctx, "git", "remote", "set-url", "--", "origin", expectedURL) // #nosec G204 -- expectedURL comes from GitLab API response, -- guards against option injection
 			setURL.Dir = repoDir
 			setURL.Env = gitEnv()
 			if out, err := setURL.CombinedOutput(); err != nil {

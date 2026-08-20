@@ -65,12 +65,13 @@ func main() {
 		log.Fatalf("error: fetching projects: %v", err)
 	}
 
-	filtered, err := gitgit.FilterProjects(projects, cfg.Regex)
+	filtered, skippedEmpty, err := gitgit.FilterProjects(projects, cfg.Regex)
 	if err != nil {
 		log.Fatalf("error: %v", err)
 	}
 
-	log.Printf("found %d projects (%d after filter)", len(projects), len(filtered))
+	log.Printf("found %d projects (%d after filter, %d skipped as empty)",
+		len(projects), len(filtered), skippedEmpty)
 
 	failures := gitgit.ProcessProjects(ctx, cfg, filtered)
 	if len(failures) > 0 {
