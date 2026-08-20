@@ -109,7 +109,7 @@ func TestFilterProjects(t *testing.T) {
 		{ID: 4, PathWithNS: "group/backend/old", Archived: true},
 	}
 
-	filtered, err := FilterProjects(projects, "backend")
+	filtered, _, err := FilterProjects(projects, "backend")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestFilterProjectsMatchAll(t *testing.T) {
 		{ID: 2, PathWithNS: "c/d"},
 	}
 
-	filtered, err := FilterProjects(projects, ".")
+	filtered, _, err := FilterProjects(projects, ".")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestFilterProjectsMatchAll(t *testing.T) {
 }
 
 func TestFilterProjectsBadRegex(t *testing.T) {
-	_, err := FilterProjects(nil, "[invalid")
+	_, _, err := FilterProjects(nil, "[invalid")
 	if err == nil {
 		t.Fatal("expected error for invalid regex")
 	}
@@ -227,7 +227,7 @@ func TestFilterProjectsEmptyRegex(t *testing.T) {
 		{ID: 2, PathWithNS: "c/d"},
 	}
 
-	filtered, err := FilterProjects(projects, "")
+	filtered, _, err := FilterProjects(projects, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -242,7 +242,7 @@ func TestFilterProjectsAllArchived(t *testing.T) {
 		{ID: 2, PathWithNS: "c/d", Archived: true},
 	}
 
-	filtered, err := FilterProjects(projects, "")
+	filtered, _, err := FilterProjects(projects, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -288,5 +288,103 @@ func TestProcessProjectsBadDataDir(t *testing.T) {
 	failures := ProcessProjects(context.Background(), cfg, projects)
 	if len(failures) != 2 {
 		t.Errorf("expected 2 failures for bad data dir, got %d", len(failures))
+	}
+}
+
+func TestFilterProjectsSkipsEmpty(t *testing.T) {
+	projects := []Project{
+		{ID: 1, PathWithNS: "group/has-commits", EmptyRepo: false},
+		{ID: 2, PathWithNS: "group/no-commits", EmptyRepo: true},
+	}
+
+	filtered, skippedEmpty, err := FilterProjects(projects, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(filtered) != 1 {
+		t.Fatalf("expected 1 project, got %d", len(filtered))
+	}
+	if filtered[0].PathWithNS != "group/has-commits" {
+		t.Errorf("expected group/has-commits, got %s", filtered[0].PathWithNS)
+	}
+	if skippedEmpty != 1 {
+		t.Errorf("expected 1 skipped empty, got %d", skippedEmpty)
+	}
+}
+
+func TestFilterProjectsEmptyAndArchived(t *testing.T) {
+	projects := []Project{
+		{ID: 1, PathWithNS: "group/plain"},
+		{ID: 2, PathWithNS: "group/empty", EmptyRepo: true},
+		{ID: 3, PathWithNS: "group/archived", Archived: true},
+		{ID: 4, PathWithNS: "group/both", Archived: true, EmptyRepo: true},
+	}
+
+	filtered, skippedEmpty, err := FilterProjects(projects, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(filtered) != 1 {
+		t.Fatalf("expected 1 project, got %d", len(filtered))
+	}
+	if filtered[0].PathWithNS != "group/plain" {
+		t.Errorf("expected group/plain, got %s", filtered[0].PathWithNS)
+	}
+
+	// Архивные отсеиваются раньше и в счётчик пустых не попадают,
+	// иначе число было бы 2 и не отражало бы реально пропущенное.
+	if skippedEmpty != 1 {
+		t.Errorf("expected 1 skipped empty, got %d", skippedEmpty)
+	}
+}
+
+func TestFilterProjectsEmptyOutsideRegex(t *testing.T) {
+	projects := []Project{
+		{ID: 1, PathWithNS: "backend/api"},
+		{ID: 2, PathWithNS: "frontend/web", EmptyRepo: true},
+	}
+
+	filtered, skippedEmpty, err := FilterProjects(projects, "backend")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(filtered) != 1 {
+		t.Fatalf("expected 1 project, got %d", len(filtered))
+	}
+	// Пустой проект не подошёл под регулярку, значит он и не пропускался.
+	if skippedEmpty != 0 {
+		t.Errorf("expected 0 skipped empty, got %d", skippedEmpty)
+	}
+}
+
+func TestFetchProjectsDecodesEmptyRepo(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("page") != "1" {
+			_, _ = w.Write([]byte("[]"))
+			return
+		}
+		_, _ = w.Write([]byte(`[
+			{"id":1,"name":"filled","path_with_namespace":"g/filled","empty_repo":false},
+			{"id":2,"name":"blank","path_with_namespace":"g/blank","empty_repo":true}
+		]`))
+	}))
+	defer srv.Close()
+
+	cfg := Config{GroupID: 1, URL: srv.URL, Token: "t"}
+	projects, err := FetchProjects(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(projects) != 2 {
+		t.Fatalf("expected 2 projects, got %d", len(projects))
+	}
+	if projects[0].EmptyRepo {
+		t.Error("g/filled should not be marked empty")
+	}
+	if !projects[1].EmptyRepo {
+		t.Error("g/blank should be marked empty")
 	}
 }
