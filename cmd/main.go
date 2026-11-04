@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
+	"strings"
 	"syscall"
 
 	"github.com/laduwka/gitgit/internal/gitgit"
@@ -75,6 +77,14 @@ func main() {
 		len(projects), len(filtered), skippedEmpty)
 
 	res := gitgit.ProcessProjects(ctx, cfg, filtered)
+	if len(res.Skipped) > 0 {
+		slices.SortFunc(res.Skipped, func(a, b gitgit.SkippedProject) int { return strings.Compare(a.Path, b.Path) })
+		fmt.Fprintf(os.Stderr, "\n=== SKIPPED (fetched, branch needs manual action) ===\n")
+		for _, s := range res.Skipped {
+			fmt.Fprintf(os.Stderr, "  %s: %s\n", s.Path, s.Reason)
+		}
+		fmt.Fprintln(os.Stderr)
+	}
 	if len(res.Failures) > 0 {
 		fmt.Fprintf(os.Stderr, "\n=== FAILED PROJECTS ===\n")
 		for _, f := range res.Failures {
@@ -86,6 +96,7 @@ func main() {
 	case res.Interrupted > 0:
 		log.Fatalf("interrupted: %d projects not processed, %d errors", res.Interrupted, len(res.Failures))
 	case len(res.Failures) > 0:
-		log.Fatalf("completed with %d errors", len(res.Failures))
+		log.Fatalf("completed with %d errors, %d skipped", len(res.Failures), len(res.Skipped))
 	}
+	log.Printf("completed: %d skipped", len(res.Skipped))
 }

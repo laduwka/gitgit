@@ -3,6 +3,7 @@ package gitgit
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -145,9 +146,17 @@ type FailedProject struct {
 	Err  string
 }
 
+// SkippedProject is a repo that was fetched but whose current branch needs
+// manual action (diverged, no upstream, local changes in the way, ...).
+type SkippedProject struct {
+	Path   string
+	Reason string
+}
+
 // Result is the outcome of ProcessProjects.
 type Result struct {
 	Failures []FailedProject
+	Skipped  []SkippedProject
 	// Interrupted counts projects that were not started or were aborted
 	// because ctx was canceled. They are not reported as failures.
 	Interrupted int
@@ -202,10 +211,14 @@ func ProcessProjects(ctx context.Context, cfg Config, projects []Project) Result
 				err = CloneRepo(ctx, proj, cloneURL, nsDir)
 			}
 			if err != nil {
+				var skip *SkippedError
 				mu.Lock()
-				if ctx.Err() != nil {
+				switch {
+				case errors.As(err, &skip):
+					res.Skipped = append(res.Skipped, SkippedProject{Path: proj.PathWithNS, Reason: skip.Reason})
+				case ctx.Err() != nil:
 					res.Interrupted++
-				} else {
+				default:
 					res.Failures = append(res.Failures, FailedProject{Path: proj.PathWithNS, Err: err.Error()})
 				}
 				mu.Unlock()
@@ -277,11 +290,90 @@ func UpdateRepo(ctx context.Context, proj Project, repoDir, expectedURL string) 
 		}
 	}
 
-	cmd := gitCommand(ctx, repoDir, "pull", "--all", "--quiet")
-	if out, err := cmd.CombinedOutput(); err != nil {
-		log.Printf("[%s] pull failed: %v\n%s", proj.PathWithNS, err, out)
+	fetch := gitCommand(ctx, repoDir, "fetch", "--all", "--prune", "--quiet")
+	if out, err := fetch.CombinedOutput(); err != nil {
+		log.Printf("[%s] fetch failed: %v\n%s", proj.PathWithNS, err, out)
+		return err
+	}
+
+	if err := fastForward(ctx, repoDir); err != nil {
+		var skip *SkippedError
+		if errors.As(err, &skip) {
+			log.Printf("[update] %s: skipped: %s", proj.PathWithNS, skip.Reason)
+		} else {
+			log.Printf("[%s] update failed: %v", proj.PathWithNS, err)
+		}
 		return err
 	}
 	log.Printf("[update] done %s", proj.PathWithNS)
 	return nil
+}
+
+// SkippedError means the repo was fetched, but its current branch was left
+// as is because updating it needs a manual decision.
+type SkippedError struct {
+	Reason string
+}
+
+func (e *SkippedError) Error() string { return e.Reason }
+
+func skipf(format string, args ...any) error {
+	return &SkippedError{Reason: fmt.Sprintf(format, args...)}
+}
+
+// fastForward moves the current branch to its upstream only when that is a
+// pure fast-forward. Every other state is returned as *SkippedError.
+func fastForward(ctx context.Context, repoDir string) error {
+	headOut, err := gitCommand(ctx, repoDir, "symbolic-ref", "-q", "--short", "HEAD").Output()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if ctx.Err() == nil && errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+			return skipf("detached HEAD")
+		}
+		return fmt.Errorf("symbolic-ref: %w", err)
+	}
+	branch := strings.TrimSpace(string(headOut))
+
+	// trackshort is not localized: "=" in sync, "<" behind, ">" ahead,
+	// "<>" diverged, "" when the upstream branch is gone.
+	refOut, err := gitCommand(ctx, repoDir, "for-each-ref",
+		"--format=%(upstream:short)%00%(upstream:trackshort)%00%(upstream:track,nobracket)",
+		"refs/heads/"+branch).Output()
+	if err != nil {
+		return fmt.Errorf("for-each-ref: %w", err)
+	}
+	line := strings.TrimRight(string(refOut), "\n")
+	if line == "" {
+		return skipf("branch %s has no commits", branch)
+	}
+	fields := strings.SplitN(line, "\x00", 3)
+	if len(fields) != 3 {
+		return fmt.Errorf("for-each-ref: unexpected output %q", line)
+	}
+	upstream, trackShort, track := fields[0], fields[1], fields[2]
+
+	switch {
+	case upstream == "":
+		return skipf("branch %s has no upstream", branch)
+	case trackShort == "":
+		return skipf("upstream %s of %s is gone", upstream, branch)
+	case trackShort == "<>":
+		return skipf("%s diverged from %s (%s)", branch, upstream, track)
+	case trackShort != "<":
+		return nil // in sync or only ahead: nothing to pull
+	}
+
+	out, err := gitCommand(ctx, repoDir, "merge", "--ff-only", "--quiet", "@{upstream}").CombinedOutput()
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return skipf("fast-forward of %s to %s failed: %s", branch, upstream, firstLine(out))
+	}
+	return nil
+}
+
+func firstLine(b []byte) string {
+	line, _, _ := strings.Cut(strings.TrimSpace(string(b)), "\n")
+	return line
 }
