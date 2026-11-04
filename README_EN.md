@@ -10,7 +10,7 @@ gitgit recursively clones and updates all projects in a given GitLab group. It u
 
 Features:
 - Recursive cloning of all group projects (including subgroups)
-- Updating (`git pull --all`) already cloned projects
+- Updating already cloned projects: `git fetch --all --prune` plus fast-forward of the current branch; branches that need a manual decision (diverged, no upstream, local changes in the way) are skipped and listed at the end
 - Project filtering by regular expression
 - Parallel execution with configurable number of workers
 - Cloning via SSH (default) or HTTPS
