@@ -1,4 +1,4 @@
-FROM golang:1.26.1-alpine AS builder
+FROM golang:1.27.3-alpine AS builder
 
 WORKDIR /src
 COPY go.mod ./
@@ -6,7 +6,7 @@ COPY cmd/ cmd/
 COPY internal/ internal/
 RUN CGO_ENABLED=0 go build -o /gitgit ./cmd/main.go
 
-FROM alpine:3.19
+FROM alpine:3.24
 
 RUN apk add --no-cache git openssh-client ca-certificates
 
