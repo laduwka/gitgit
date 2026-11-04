@@ -135,6 +135,24 @@ alias gitgit='docker run --rm -it \
   -e TOKEN gitgit'
 ```
 
+## macOS: фоновый запуск через launchd
+
+Синк нескольких групп как LaunchAgent, запуск вручную, без расписания.
+
+```bash
+security add-generic-password -a "$(id -un)" -s gitgit -w   # токен в Keychain
+mkdir -p ~/.config/gitgit
+cp contrib/launchd/sync.env.example ~/.config/gitgit/sync.env   # заполнить URL, группы, путь
+make install-launchd
+
+gitgit-sync start    # запустить в фоне
+gitgit-sync status   # состояние и код последнего завершения
+gitgit-sync log      # лог: ~/Library/Logs/gitgit-sync.log
+gitgit-sync stop     # остановка через SIGINT
+```
+
+Удаление: `make uninstall-launchd`.
+
 ## Принцип работы
 
 1. Получает список проектов через GitLab API v4 (`/groups/:id/projects`) с пагинацией

@@ -15,4 +15,8 @@
 !.github/
 !.github/workflows/
 !.github/workflows/*.yml
+!Makefile
+!contrib/
+!contrib/launchd/
+!contrib/launchd/*
 CLAUDE.md

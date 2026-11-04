@@ -1,0 +1,46 @@
+#!/bin/bash
+# gitgit-sync: run gitgit for several GitLab groups under launchd.
+# Usage: gitgit-sync {start|stop|status|log|run}
+set -euo pipefail
+
+LABEL="com.laduwka.gitgit-sync"
+TARGET="gui/$(id -u)/$LABEL"
+CONFIG="${GITGIT_SYNC_CONFIG:-$HOME/.config/gitgit/sync.env}"
+LOG="$HOME/Library/Logs/gitgit-sync.log"
+
+run() {
+  # shellcheck source=/dev/null
+  source "$CONFIG"
+  : "${GITGIT_URL:?}" "${GITGIT_GROUPS:?}" "${GITGIT_DATA:?}"
+  [[ -f $LOG ]] && mv -f "$LOG" "$LOG.1"
+  exec >"$LOG" 2>&1
+
+  TOKEN="$(security find-generic-password -a "$(id -un)" -s "${GITGIT_KEYCHAIN_SERVICE:-gitgit}" -w)"
+  export TOKEN URL="$GITGIT_URL"
+  export GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=15"
+
+  local child="" stopped=0 rc=0 st
+  trap 'stopped=1; [[ -n $child ]] && kill -INT "$child" 2>/dev/null || true' INT TERM
+
+  for id in $GITGIT_GROUPS; do
+    (( stopped )) && break
+    echo "=== group $id: $(date '+%F %T')"
+    gitgit -id "$id" -data "$GITGIT_DATA" -workers "${GITGIT_WORKERS:-4}" &
+    child=$!
+    st=0; wait "$child" || st=$?
+    while kill -0 "$child" 2>/dev/null; do st=0; wait "$child" || st=$?; done
+    child=""
+    (( st == 0 )) || rc=1
+  done
+  echo "=== done rc=$rc stopped=$stopped: $(date '+%F %T')"
+  return "$rc"
+}
+
+case "${1:-}" in
+  run)    run ;;
+  start)  launchctl kickstart "$TARGET" && echo "started, log: $LOG" ;;
+  stop)   launchctl kill SIGINT "$TARGET" ;;
+  status) launchctl print "$TARGET" | grep -E '^\s*(state|pid|last exit code|runs) =' ;;
+  log)    tail -n 50 -f "$LOG" ;;
+  *)      echo "usage: $(basename "$0") {start|stop|status|log|run}" >&2; exit 2 ;;
+esac
