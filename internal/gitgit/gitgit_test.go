@@ -253,9 +253,9 @@ func TestFilterProjectsAllArchived(t *testing.T) {
 
 func TestProcessProjectsEmpty(t *testing.T) {
 	cfg := Config{Workers: 2, DataDir: t.TempDir()}
-	failures := ProcessProjects(context.Background(), cfg, nil)
-	if len(failures) != 0 {
-		t.Errorf("expected 0 failures, got %d", len(failures))
+	res := ProcessProjects(context.Background(), cfg, nil)
+	if len(res.Failures) != 0 {
+		t.Errorf("expected 0 failures, got %d", len(res.Failures))
 	}
 }
 
@@ -285,9 +285,9 @@ func TestProcessProjectsBadDataDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := Config{Workers: 1, DataDir: badDir}
-	failures := ProcessProjects(context.Background(), cfg, projects)
-	if len(failures) != 2 {
-		t.Errorf("expected 2 failures for bad data dir, got %d", len(failures))
+	res := ProcessProjects(context.Background(), cfg, projects)
+	if len(res.Failures) != 2 {
+		t.Errorf("expected 2 failures for bad data dir, got %d", len(res.Failures))
 	}
 }
 

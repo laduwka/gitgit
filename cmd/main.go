@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"syscall"
 
 	"github.com/laduwka/gitgit/internal/gitgit"
 )
@@ -57,7 +58,7 @@ func main() {
 		log.Fatalf("error: cannot create data dir: %v", err)
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	projects, err := gitgit.FetchProjects(ctx, cfg)
@@ -73,13 +74,18 @@ func main() {
 	log.Printf("found %d projects (%d after filter, %d skipped as empty)",
 		len(projects), len(filtered), skippedEmpty)
 
-	failures := gitgit.ProcessProjects(ctx, cfg, filtered)
-	if len(failures) > 0 {
+	res := gitgit.ProcessProjects(ctx, cfg, filtered)
+	if len(res.Failures) > 0 {
 		fmt.Fprintf(os.Stderr, "\n=== FAILED PROJECTS ===\n")
-		for _, f := range failures {
+		for _, f := range res.Failures {
 			fmt.Fprintf(os.Stderr, "  %s: %s\n", f.Path, f.Err)
 		}
 		fmt.Fprintln(os.Stderr)
-		log.Fatalf("completed with %d errors", len(failures))
+	}
+	switch {
+	case res.Interrupted > 0:
+		log.Fatalf("interrupted: %d projects not processed, %d errors", res.Interrupted, len(res.Failures))
+	case len(res.Failures) > 0:
+		log.Fatalf("completed with %d errors", len(res.Failures))
 	}
 }
