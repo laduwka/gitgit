@@ -40,7 +40,7 @@ case "${1:-}" in
   run)    run ;;
   start)  launchctl kickstart "$TARGET" && echo "started, log: $LOG" ;;
   stop)   launchctl kill SIGINT "$TARGET" ;;
-  status) launchctl print "$TARGET" | grep -E '^\s*(state|pid|last exit code|runs) =' ;;
+  status) launchctl print "$TARGET" | grep -E $'^\t(state|pid|last exit code|runs) =' ;;
   log)    tail -n 50 -f "$LOG" ;;
   *)      echo "usage: $(basename "$0") {start|stop|status|log|run}" >&2; exit 2 ;;
 esac
